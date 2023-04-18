@@ -1,0 +1,30 @@
+def main_kb() -> ReplyKeyboardMarkup:
+    kb = ReplyKeyboardMarkup(resize_keyboard=True)
+    kb.add(KeyboardButton('Сделать заказ')).add(KeyboardButton('Помощь')).insert(KeyboardButton('Оплата'))
+    return kb
+
+def kb_view_product() -> ReplyKeyboardMarkup:
+    kb = ReplyKeyboardMarkup(resize_keyboard=True)
+    kb.add(KeyboardButton('Дроблёнка')).insert(KeyboardButton('Зерно')).add(KeyboardButton('Отмена'))
+    return kb
+
+def kb_cancel() -> ReplyKeyboardMarkup:
+    kb = ReplyKeyboardMarkup(resize_keyboard=True)
+    kb.add(KeyboardButton('Отмена'))
+    return kb
+
+def kb_pick_payment_method() -> ReplyKeyboardMarkup:
+    kb = ReplyKeyboardMarkup(resize_keyboard=True)
+    kb.add(KeyboardButton('Сейчас по карте сбербанк')).insert(KeyboardButton('При получении')).add(KeyboardButton('Отмена'))
+    return kb
+
+def ikb_payment() -> InlineKeyboardMarkup:
+    ikb = InlineKeyboardMarkup
+    ikb.add(KeyboardButton('Оплатить')).add(KeyboardButton('Отмена'))
+    return ikb
+
+
+def kb_pick_village() -> ReplyKeyboardMarkup:
+    kb = ReplyKeyboardMarkup(resize_keyboard=True)
+    kb.add('Калтук').insert('Другая').add('Отмена')
+    return kb
