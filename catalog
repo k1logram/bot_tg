@@ -1,0 +1,10 @@
+product_1 = {
+    'name': 'Дроблёнка',
+    'price': 550
+}
+product_2 = {
+    'name': 'Зерно',
+    'price': 600
+}
+
+product_list = [product_1, product_2]
