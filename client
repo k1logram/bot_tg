@@ -1,0 +1,148 @@
+class FSMClient(StatesGroup):
+    product = State()
+    village = State()
+    volume = State()
+    address = State()
+    name = State()
+    contact = State()
+    pick_payment_method = State()
+
+HELP_TEXT = '''
+<b>Start</b> - <em>начать работу бота</em>.
+<b>Оплата</b> - <em>узнать способы оплаты</em>.
+<b>Сделать заказ</b> - <em>оформить заказ товара</em>.
+'''
+
+
+
+
+@dp.message_handler(commands='start')
+async def cmd_start(message: types.Message):
+    await message.answer('<b>Привет</b> 👋!\n\nТут ты можешь заказать дроблёнку или зерно с доставкой в свою деревню из Ключи-Булака 🚚. \nДля этого нажми <em>Сделать заказ</em>.',
+                         reply_markup=client_kb.main_kb(),
+                         parse_mode='HTML')
+
+@dp.message_handler(Text(equals='Оплата'))
+async def cmd_description(message: types.Message):
+    await message.answer('Заказ можно оплатить прямо в телеграмм картой <b>Сбербанк</b>💳.\nЛибо при получении <b>наличными</b>💵.',
+                         parse_mode='HTML')
+
+@dp.message_handler(Text(equals='Помощь'))
+async def cmd_description(message: types.Message):
+    await message.answer(text=HELP_TEXT,
+                         parse_mode='HTML')
+
+@dp.message_handler(Text(equals='Отмена'), state='*')
+async def cmd_cancel(message: types.Message, state: FSMContext):
+    await message.answer('<b>Сбросил процесс оформления заказа</b> ❌.',
+                         parse_mode='HTML',
+                         reply_markup=client_kb.main_kb())
+    await state.finish()
+
+@dp.message_handler(Text(equals='Сделать заказ'), state='*')
+async def cmd_view_product(message: types.Message):
+    await message.answer('Для начала выбери товар📦.\nДроблёнка - 550₽ за мешок\nЗерно - 600₽ за мешок',
+                         parse_mode='HTML',
+                         reply_markup=client_kb.kb_view_product())
+    await FSMClient.product.set()
+
+
+@dp.message_handler(state=FSMClient.product)
+async def cmd_load_product(message: types.Message, state: FSMContext):
+    async with state.proxy() as data:
+        data['user_id'] = message.from_user.id
+        data['product'] = message.text
+    await FSMClient.next()
+    await message.answer(f'Хорошо, ты выбрал - {message.text}. Теперь скажи свою деревню🏙.',
+                        reply_markup=client_kb.kb_pick_village())      # <---------- Выбор деревни
+
+@dp.message_handler(lambda message: 'Другая' in message.text, state=FSMClient.village)
+async def cmd_load_input_village(message: types.Message, state: FSMContext):
+    await message.answer('Напиши её...')
+
+# месадж хендлер берет название деревни и узнает доступное колво
+@dp.message_handler(state=FSMClient.village)
+async def cmd_load_village(message: types.Message, state: FSMContext):
+    async with state.proxy() as data:
+        data['village'] = message.text
+    if message.text == 'Калтук':
+        await sqlite.check_open(message, state)
+    else:
+        await message.answer(f'Введи количество в мешках🔢.',
+                             parse_mode='HTML')
+    await FSMClient.next()
+
+@dp.message_handler(state=FSMClient.volume)
+async def cmd_load_volume(message: types.Message, state: FSMContext):
+    async with state.proxy() as data:
+        data['volume'] = message.text
+    await FSMClient.next()
+    await message.answer('Введи свой адрес доставки✉️.')
+
+@dp.message_handler(state=FSMClient.address)
+async def cmd_load_address(message: types.Message, state: FSMContext):
+    async with state.proxy() as data:
+        data['address'] = message.text
+    await FSMClient.next()
+    await message.answer('Напиши своё имя.')
+
+@dp.message_handler(state=FSMClient.name)
+async def cmd_load_name(message: types.Message, state: FSMContext):
+    async with state.proxy() as data:
+        data['name'] = message.text
+    await FSMClient.next()
+    await message.answer('Супер!\nОсталось ввести телефон для обратной связи📞.')
+
+@dp.message_handler(state=FSMClient.contact)
+async def cmd_load_contact(message: types.Message, state: FSMContext):
+    async with state.proxy() as data:
+        data['contact'] = message.text
+    await message.answer('Выбери как удобно оплатить💰.',
+                         reply_markup=client_kb.kb_pick_payment_method())
+    await FSMClient.next()
+
+@dp.message_handler(lambda message: 'При получении' in message.text, state=FSMClient.pick_payment_method)
+async def cmd_pick_payment_method(message: types.Message, state: FSMContext):
+    async with state.proxy() as data:
+        data['payment_method'] = message.text
+        data['end'] = 'False'
+    await completion_create_order(message, state)
+    await state.finish()
+
+@dp.message_handler(lambda message: 'Сейчас по карте сбербанк' in message.text, state=FSMClient.pick_payment_method)
+async def cmd_payment_sberbank(message: types.Message, state: FSMContext):
+    async with state.proxy() as data:
+        data['payment_method'] = 'await'
+        data['end'] = 'False'
+        for product_name in catalog.product_list:
+            if data['product'] in product_name['name']:
+                PRICE = int(product_name['price']) * int(data['volume'])
+                await message.answer(f'Для оплаты заказа переведи сумму {PRICE} ₽ на банковскую карту сбербанк номер ....\nКак только пройдёт оплата ты получишь сообщение об окончании оформления заказа',
+                                     reply_markup=client_kb.main_kb()) #    <---  Номер карты
+    await sqlite.create_order(state, message.from_user.id)
+    await sqlite.view_last_order()
+
+@dp.message_handler(content_types=ContentType.SUCCESSFUL_PAYMENT, state=FSMClient.pick_payment_method)
+async def successful_payment(message: types.Message, state: FSMContext):
+    await sqlite.create_order(state, message.from_user.id)
+    await sqlite.enter_order(message, state)
+    await sqlite.view_last_order()
+    await state.finish()
+
+
+
+def register_client_handler(dp: Dispatcher):
+    dp.register_message_handler(cmd_start, commands='start', state=None)
+    dp.register_message_handler(cmd_description, Text(equals='Оплата'), state=None)
+    dp.register_message_handler(cmd_cancel, Text(equals='Отмена', ignore_case=True), state='*')
+    dp.register_message_handler(cmd_view_product, Text(equals='Сделать заказ'), state=None)
+    dp.register_message_handler(cmd_load_product, state=FSMClient.product)
+    dp.register_message_handler(cmd_load_input_village, lambda message: 'Другая' in message.text, state=FSMClient.village)
+    dp.register_message_handler(cmd_load_village, state=FSMClient.village)
+    dp.register_message_handler(cmd_load_volume, state=FSMClient.volume)
+    dp.register_message_handler(cmd_load_address, state=FSMClient.address)
+    dp.register_message_handler(cmd_load_name, state=FSMClient.name)
+    dp.register_message_handler(cmd_load_contact, state=FSMClient.contact)
+    dp.register_message_handler(cmd_pick_payment_method, lambda message: 'При получении' in message.text, state=FSMClient.pick_payment_method)
+    dp.register_message_handler(cmd_payment_sberbank, lambda message: 'Сейчас по карте сбербанк' in message.text, state=FSMClient.pick_payment_method)
+    dp.register_message_handler(successful_payment, content_types=ContentType.SUCCESSFUL_PAYMENT, state=FSMClient.pick_payment_method)
