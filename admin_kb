@@ -1,0 +1,14 @@
+def main_kb() -> ReplyKeyboardMarkup:
+    kb = ReplyKeyboardMarkup(resize_keyboard=True)
+    kb.add(KeyboardButton('Ожидающие заявки')).insert(KeyboardButton('Активные заявки')).add(KeyboardButton('отмена'))
+    return kb
+
+def pick_orders() -> ReplyKeyboardMarkup:
+    kb = ReplyKeyboardMarkup(resize_keyboard=True)
+    kb.add(KeyboardButton('Все активные заявки')).insert(KeyboardButton('Закрыть заявку')).insert(KeyboardButton('Обнулить счетчик')).add(KeyboardButton('отмена'))
+    return kb
+
+def close_order() -> ReplyKeyboardMarkup:
+    kb = ReplyKeyboardMarkup(resize_keyboard=True)
+    kb.add(KeyboardButton('Ёще')).add(KeyboardButton('отмена'))
+    return kb
