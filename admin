@@ -1,0 +1,86 @@
+class FSMAdmin(StatesGroup):
+    admin = State()
+    accept_order = State()
+    close = State()
+    close_order = State()
+
+
+
+@dp.message_handler(commands='admin')
+async def cmd_start_admin(message: types.Message):
+    if message.from_user.id == 6181965444:
+        await message.answer('Добро пожаловать, повелитель.',
+                             reply_markup=admin_kb.main_kb())
+        await FSMAdmin.admin.set()
+    await message.delete()
+
+@dp.message_handler(Text(equals='отмена'), state='*')
+async def cmd_cancel(message: types.Message, state: FSMContext):
+    await message.answer('<b>Отменил</b> ❌.',
+                         parse_mode='HTML',
+                         reply_markup=admin_kb.main_kb())
+    await FSMAdmin.admin.set()
+    await message.delete()
+
+
+@dp.message_handler(Text(equals='Активные заявки'), state=FSMAdmin.admin)
+async def cmd_cancel(message: types.Message, state: FSMContext):
+    await message.answer('Что именно тебе нужно?',
+                         parse_mode='HTML',
+                         reply_markup=admin_kb.pick_orders())
+    await message.delete()
+
+@dp.message_handler(Text(equals='Все активные заявки'), state=FSMAdmin.admin)
+async def cmd_cancel(message: types.Message, state: FSMContext):
+    await sqlite.view_all_open_orders()
+
+@dp.message_handler(Text(equals='Закрыть заявку'), state=FSMAdmin.admin)
+async def cmd_close(message: types.Message, state: FSMContext):
+    await message.answer('Напиши в какой ты деревне.')
+    await FSMAdmin.close.set()
+
+@dp.message_handler(state=FSMAdmin.close)
+async def cmd_view_orders_in_v(message: types.Message, state: FSMContext):
+    await message.answer(f'Вот все заявки в {message.text}')
+    await sqlite.view_orders_in_village(message.text)
+    await FSMAdmin.next()
+
+@dp.message_handler(state=FSMAdmin.close_order)
+async def cmd_close_order(message: types.Message, state: FSMContext):
+    await sqlite.closure_order(message.text)
+    await message.answer(f'Ты закрыл заявку номер - {message.text}\nЗаново напиши деревню')
+    await FSMAdmin.close.set()
+
+
+
+@dp.message_handler(Text(equals='Ожидающие заявки'), state=FSMAdmin.admin)
+async def cmd_check_await(message: types.Message, state: FSMContext):
+    await sqlite.check_await_order() #      <----- функция отображения всех заявок с состоянием paymenth_method -- await
+    await FSMAdmin.next()
+
+
+@dp.message_handler(state=FSMAdmin.accept_order)
+async def cmd_accept_order(message: types.Message, state: FSMContext):
+    if message.text.isnumeric():
+        await message.answer('Отметил')
+        await sqlite.accept_order_sql(message.text) #      <----- функция помечающая определенную заявку как оплаченная
+    await FSMAdmin.admin.set()
+
+dp.message_handler(state=FSMAdmin.admin)
+async def cmd_back_counter(message: types.Message):
+    await sqlite.back_counter()
+    await message.answer('Обнулил')
+
+
+
+
+
+def register_client_handler(dp: Dispatcher):
+    dp.register_message_handler(cmd_start_admin, commands='admin')
+    dp.register_message_handler(cmd_cancel, Text(equals='отмена'), state=FSMAdmin.accept_order or FSMAdmin.close or FSMAdmin.close_order)
+    dp.register_message_handler(cmd_check_await, Text(equals='Просмотреть ожидающие'), state=FSMAdmin.admin)
+    dp.register_message_handler(cmd_accept_order, state=FSMAdmin.accept_order)
+    dp.register_message_handler(cmd_close, Text(equals='Закрыть заявку'), state=FSMAdmin.admin)
+    dp.register_message_handler(cmd_view_orders_in_v, state=FSMAdmin.close)
+    dp.register_message_handler(cmd_close_order, state=FSMAdmin.close_order)
+    dp.register_message_handler(cmd_back_counter, state=FSMAdmin.admin)
