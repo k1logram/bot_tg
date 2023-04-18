@@ -1,0 +1,23 @@
+from create_bot import dp
+from aiogram import executor
+from sqlite import db_start
+
+
+async def on_startup(_):
+    print('Бот вышел в онлайн')
+    await db_start()
+
+
+from handlers import client, admin
+admin.register_client_handler(dp)
+client.register_client_handler(dp)
+
+
+
+
+
+
+if __name__ == '__main__':
+    executor.start_polling(dp,
+                           skip_updates=True,
+                           on_startup=on_startup)
