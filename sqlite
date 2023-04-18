@@ -1,0 +1,114 @@
+
+async def db_start():
+    global db, cur
+
+    db = sq.connect('order.db')
+    cur = db.cursor()
+#                                                                название товара деревня     кол во       адрес         имя          номер телефона способ оплаты  end - False(ожидает доставки) True(уже доставлена)
+    db.execute("CREATE TABLE IF NOT EXISTS orders(user_id TEXT, product TEXT, village TEXT, volume TEXT, address TEXT, name TEXT, contact TEXT, payment_method TEXT, end TEXT)")
+    db.commit()
+
+async def create_order(state, user_id):
+    async with state.proxy() as data:
+        cur.execute("INSERT INTO orders VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", tuple(data.values()))
+        db.commit()
+
+async def check_open(message, state):
+    async with state.proxy() as data:
+        for ret in cur.execute(f"SELECT * FROM application WHERE village = '{message.text}'").fetchall():
+            await bot.send_message(chat_id=message.from_user.id,
+                                text=f'В деревне {message.text} до доставки по заявке осталось - <em>{int(ret[3]) - int(ret[2])}</em>\nВведи количество в мешках🔢.',
+                                reply_markup=kb_cancel(),
+                                   parse_mode='HTML')
+
+async def enter_order(message, state):
+    async with state.proxy() as data:
+        for ret in cur.execute(f"SELECT expected FROM application WHERE village = '{data['village']}'").fetchall():
+            res = int(ret[0]) + int(data['volume'])
+            cur.execute(f"UPDATE application SET expected = {res} WHERE village = '{data['village']}'")
+            db.commit()
+
+async def view_last_order():
+
+    for ret in cur.execute("SELECT max(rowid) FROM orders"):
+        res = ret[0]
+        for i in cur.execute(f"SELECT * FROM orders WHERE rowid = '{res}'").fetchall():
+
+            await bot.send_message(chat_id=admin,
+                                   text=f'Появилась новая заявка\n<b>{i[5]}</b> из деревни <b>{i[2]}</b> заказал <b>{i[3]} {i[1]}</b>\nАдрес <b>{i[4]}</b>\nНомер телефона <b>{i[6]}</b>\nОплата - <b>{i[7]}</b>',
+                                   parse_mode='HTML')
+
+async def completion_create_order(message, state):
+    await create_order(state, message.from_user.id)
+    await enter_order(message, state)
+    await view_last_order()
+    await message.answer('Твой заказ успешно оформлен✅!',
+                         reply_markup=main_kb())
+
+async def check_await_order():
+    count = 0
+    while True:
+        for i in cur.execute(f"SELECT user_id, product, volume FROM orders WHERE payment_method = 'await'").fetchall():
+            if i:
+                for product_name in catalog.product_list:
+                    if i[1] in product_name['name']:
+                        PRICE = int(product_name['price']) * int(i[2])
+                        await bot.send_message(chat_id=admin,
+                                               text=f'Пользователь {i[0]} сумма {PRICE}')
+                        count += 1
+        if count != 0:
+            await bot.send_message(chat_id=admin,
+                                   text='Отправь ID клиента от которого пришла оплата.')
+        if count == 0:
+            await bot.send_message(chat_id=admin,
+                             text=f'Ожидающих подтверждение заявок нет.')
+        break
+
+
+async def accept_order_sql(user_id):
+    cur.execute(f"UPDATE orders SET payment_method = 'Картой' WHERE user_id = '{user_id}' and end = 'False'")
+    db.commit()
+    await bot.send_message(chat_id=int(user_id),
+                           text='Твой заказ успешно оформлен✅!')
+
+async def view_all_open_orders():
+    village = []
+    for v in cur.execute(f"SELECT village FROM orders WHERE end = 'False' and payment_method != 'await'").fetchall():
+        village.append(v[0])
+    for v in set(village):
+        await bot.send_message(chat_id=admin,
+                         text=f'<b>Заявки в {v}</b> 🏙.',
+                               parse_mode='HTML')
+        for i in cur.execute(f"SELECT product, volume FROM orders WHERE village = '{v}' AND payment_method != 'await' AND end = 'False'").fetchall():
+            await bot.send_message(chat_id=admin,
+                             text=f'{i[0]} {i[1]}')
+
+
+async def view_orders_in_village(village):
+    count = 0
+    while True:
+        for i in cur.execute(f"SELECT product, volume, address, name, contact, payment_method, rowid FROM orders WHERE village = '{village}' AND payment_method != 'await' AND end = 'False'").fetchall():
+            await bot.send_message(chat_id=admin,
+                             text=f'{i[6]}\n{i[3]} по адрессу {i[2]} заказал {i[0]} количеством {i[1]} шт. номер телефона - {i[4]} метод оплаты {i[5]}')
+            count += 1
+        if count != 0:
+            await bot.send_message(chat_id=admin,
+                                   text='Укажи номер заявки которую ты закрыл')
+        if count == 0:
+            await bot.send_message(chat_id=admin,
+                             text=f'Аквтивных заявок в {village} нет.')
+        break
+
+
+
+
+async def closure_order(id):
+    cur.execute(f"UPDATE orders SET end = 'True' WHERE rowid = {id}")
+    db.commit()
+
+
+
+
+async def back_counter():
+    cur.execute(f"UPDATE application SET expected = '0'")
+    db.commit()
